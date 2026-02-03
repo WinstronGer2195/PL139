@@ -1,0 +1,5 @@
+{
+  "name": "PL139 Preparacion Mix",
+  "description": "A professional laboratory tool for managing master mix templates, calculating reagent volumes for PCR and other assays, and maintaining a secure audit log of all preparations.",
+  "requestFramePermissions": []
+}
