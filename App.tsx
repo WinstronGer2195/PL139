@@ -157,20 +157,18 @@ const App: React.FC = () => {
   // --- Handlers de Acción (Local + Supabase + Sheet) ---
 
   const handleUpdateReagent = async (r: Reagent) => {
-    // 1. Local: Buscar y actualizar si existe, o agregar si no (aunque para eso está handleAddReagent)
+    // 1. Local
     const exists = reagents.some(item => item.id === r.id);
     let updatedReagents;
-    
     if (exists) {
       updatedReagents = reagents.map(item => item.id === r.id ? r : item);
     } else {
       updatedReagents = [r, ...reagents];
     }
-    
     setReagents(updatedReagents);
 
-    // 2. Google Sheet (Registrar evento de actualización)
-    syncToSheet('reagent_updated', r);
+    // 2. Google Sheet (UPSERT para mantener inventario al día)
+    syncToSheet('reagent_upsert', r);
 
     // 3. Supabase
     if (supabase) {
@@ -187,12 +185,15 @@ const App: React.FC = () => {
 
   const handleDeleteReagent = async (id: string) => {
     setReagents(reagents.filter(r => r.id !== id));
+    // 2. Google Sheet (DELETE)
+    syncToSheet('reagent_delete', { id });
     if (supabase) await supabase.from('reagents').delete().eq('id', id);
   };
 
   const handleAddTemplate = async (t: MixTemplate) => {
     setTemplates([t, ...templates]);
-    syncToSheet('template_created', t);
+    // 2. Google Sheet (UPSERT)
+    syncToSheet('template_upsert', t);
     if (supabase) {
       await supabase.from('templates').upsert({
         id: t.id,
@@ -206,6 +207,8 @@ const App: React.FC = () => {
 
   const handleDeleteTemplate = async (id: string) => {
     setTemplates(templates.filter(t => t.id !== id));
+    // 2. Google Sheet (DELETE)
+    syncToSheet('template_delete', { id });
     if (supabase) await supabase.from('templates').delete().eq('id', id);
   };
 
@@ -213,7 +216,6 @@ const App: React.FC = () => {
     // --- LÓGICA DE CONTADOR AUTOMÁTICO ---
     const currentYear = new Date().getFullYear();
     const yearlyRecords = history.filter(h => {
-      // Verificar timestamp para asegurar que pertenece al año actual
       const date = new Date(h.timestamp);
       return date.getFullYear() === currentYear;
     });
@@ -221,9 +223,9 @@ const App: React.FC = () => {
     let maxCounter = 0;
     yearlyRecords.forEach(record => {
       if (record.serialNumber && record.serialNumber.includes('/')) {
-        const parts = record.serialNumber.split('/'); // Ej: "S5/2024" -> ["S5", "2024"]
+        const parts = record.serialNumber.split('/');
         if (parts.length === 2) {
-           const numPart = parts[0].replace(/\D/g, ''); // Eliminar 'S' -> "5"
+           const numPart = parts[0].replace(/\D/g, '');
            const num = parseInt(numPart, 10);
            if (!isNaN(num) && num > maxCounter) {
              maxCounter = num;
@@ -233,15 +235,13 @@ const App: React.FC = () => {
     });
 
     const newSerialNumber = `S${maxCounter + 1}/${currentYear}`;
-    
-    // Crear el registro final con el serial number
     const finalRecord = { ...p, serialNumber: newSerialNumber };
 
     // 1. Local
     setHistory([finalRecord, ...history]);
     setActiveTab('audit');
     
-    // 2. Google Sheet
+    // 2. Google Sheet (Log de preparación)
     syncToSheet('preparation_created', finalRecord);
 
     // 3. Supabase
@@ -259,6 +259,9 @@ const App: React.FC = () => {
 
   const handleAddEquipment = async (e: Equipment) => {
     setEquipment([...equipment, e]);
+    // 2. Google Sheet (UPSERT)
+    syncToSheet('equipment_upsert', e);
+    
     if (supabase) {
       await supabase.from('equipment').upsert({
         id: e.id,
@@ -270,6 +273,9 @@ const App: React.FC = () => {
 
   const handleDeleteEquipment = async (id: string) => {
     setEquipment(equipment.filter(e => e.id !== id));
+    // 2. Google Sheet (DELETE)
+    syncToSheet('equipment_delete', { id });
+    
     if (supabase) await supabase.from('equipment').delete().eq('id', id);
   };
 

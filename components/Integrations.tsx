@@ -11,25 +11,140 @@ interface Props {
 const Integrations: React.FC<Props> = ({ config, onUpdate }) => {
   const [copied, setCopied] = React.useState(false);
 
+  // --- SCRIPT AVANZADO PARA GOOGLE SHEETS ---
   const scriptCode = `function doPost(e) {
-  var data = JSON.parse(e.postData.contents);
+  var raw = JSON.parse(e.postData.contents);
   var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var sheetName = data.type === 'preparation_created' ? 'Preparaciones' : 'Inventario';
-  var sheet = ss.getSheetByName(sheetName) || ss.insertSheet(sheetName);
-  
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(["Timestamp", "Tipo", "Nombre", "Detalles", "JSON"]);
+  var timestamp = new Date();
+
+  // 1. SIEMPRE registrar en Auditoría (Log crudo)
+  recordAudit(ss, raw, timestamp);
+
+  // 2. Gestionar Hojas Específicas (Cuaderno Electrónico)
+  try {
+    switch (raw.type) {
+      case 'reagent_upsert':
+        handleInventory(ss, raw.data);
+        break;
+      case 'reagent_delete':
+        deleteRowById(ss, 'Inventario', raw.data.id);
+        break;
+      case 'equipment_upsert':
+        handleEquipment(ss, raw.data);
+        break;
+      case 'equipment_delete':
+        deleteRowById(ss, 'Equipos', raw.data.id);
+        break;
+      case 'template_upsert':
+        handleTemplates(ss, raw.data);
+        break;
+      case 'template_delete':
+        deleteRowById(ss, 'Protocolos', raw.data.id);
+        break;
+      case 'preparation_created':
+        handlePreparation(ss, raw.data, timestamp);
+        break;
+    }
+  } catch (err) {
+    // Si falla la lógica visual, al menos tenemos la auditoría
   }
-  
-  sheet.appendRow([
-    new Date(), 
-    data.type, 
-    data.data.templateName || data.data.name, 
-    JSON.stringify(data.data.reagents || data.data),
-    e.postData.contents
-  ]);
-  
+
   return ContentService.createTextOutput("Success").setMimeType(ContentService.MimeType.TEXT);
+}
+
+// --- MANEJO DE INVENTARIO ---
+function handleInventory(ss, item) {
+  var sheet = getSheet(ss, 'Inventario', ['ID', 'Nombre', 'Lote', 'Conc. Inicial', 'Unidad']);
+  var rowData = [item.id, item.name, item.lotNumber, item.initialConcentration, item.unit];
+  upsertRow(sheet, item.id, rowData);
+}
+
+// --- MANEJO DE EQUIPOS ---
+function handleEquipment(ss, item) {
+  var sheet = getSheet(ss, 'Equipos', ['ID', 'Categoría', 'Nombre / Identificación']);
+  var rowData = [item.id, item.category, item.name];
+  upsertRow(sheet, item.id, rowData);
+}
+
+// --- MANEJO DE PROTOCOLOS (MIXES) ---
+function handleTemplates(ss, item) {
+  var sheet = getSheet(ss, 'Protocolos', ['ID', 'Nombre', 'Descripción', 'Detalle Reactivos']);
+  // Formatear reactivos para lectura humana
+  var details = item.reagents.map(function(r) {
+    return "ID_Reactivo: " + r.reagentId + " (" + r.targetFinalConcentration + ")";
+  }).join(" | ");
+  
+  var rowData = [item.id, item.name, item.description, details];
+  upsertRow(sheet, item.id, rowData);
+}
+
+// --- MANEJO DE PREPARACIONES (RESULTADOS) ---
+function handlePreparation(ss, item, ts) {
+  var sheet = getSheet(ss, 'Preparaciones', ['Serial S#', 'Fecha', 'Analista', 'Mix', 'Vol. Total (uL)', 'Vol. Agua (uL)', 'Detalle Reactivos', 'Equipos Usados']);
+  
+  // Formato legible de reactivos usados
+  var reagentsText = item.reagents.map(function(r) {
+    return r.name + " (L:" + r.lotNumber + "): " + parseFloat(r.totalVolume).toFixed(2) + "uL";
+  }).join("\\n");
+
+  // Formato legible de equipos
+  var equipText = (item.equipment || []).map(function(eq) {
+    return eq.category + ": " + eq.name;
+  }).join(" | ");
+
+  sheet.appendRow([
+    item.serialNumber || "---",
+    ts,
+    item.analyst,
+    item.templateName,
+    item.totalVolume,
+    item.waterVolume,
+    reagentsText,
+    equipText
+  ]);
+}
+
+// --- AUDITORÍA (LOG) ---
+function recordAudit(ss, data, ts) {
+  var sheet = getSheet(ss, 'Auditoria', ['Timestamp', 'Tipo Acción', 'Datos JSON']);
+  sheet.appendRow([ts, data.type, JSON.stringify(data.data)]);
+}
+
+// --- UTILIDADES ---
+function getSheet(ss, name, headers) {
+  var sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(headers);
+    sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#e6f4ea");
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
+}
+
+function upsertRow(sheet, id, newValues) {
+  var data = sheet.getDataRange().getValues();
+  // Asumimos que la columna A (índice 0) es el ID
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] == id) {
+      // Actualizar fila existente
+      sheet.getRange(i + 1, 1, 1, newValues.length).setValues([newValues]);
+      return;
+    }
+  }
+  // Si no existe, crear nueva
+  sheet.appendRow(newValues);
+}
+
+function deleteRowById(sheet, sheetName, id) {
+  var sheet = getSheet(sheet, sheetName, []); // Headers no importan para borrar
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (data[i][0] == id) {
+      sheet.deleteRow(i + 1);
+      return;
+    }
+  }
 }`;
 
   const copyCode = () => {
@@ -151,15 +266,17 @@ const Integrations: React.FC<Props> = ({ config, onUpdate }) => {
             </button>
           </div>
 
-          <ol className="text-xs space-y-3 list-decimal list-inside text-slate-400 leading-relaxed">
-            <li>Abre una <span className="text-white font-medium underline">Google Sheet</span> nueva.</li>
-            <li>Ve a <span className="text-white font-medium">Extensiones &gt; Apps Script</span>.</li>
-            <li>Pega el código de abajo (reemplazando todo).</li>
-            <li>Haz clic en <span className="text-white font-medium">Implementar &gt; Nueva implementación</span>.</li>
-            <li>Tipo: <span className="text-white font-medium">Aplicación web</span>.</li>
-            <li>Quién tiene acceso: <span className="text-white font-medium">Cualquiera</span>.</li>
-            <li>Copia la URL generada y pégala en el panel de la izquierda (Auditoría Excel).</li>
-          </ol>
+          <div className="space-y-2 text-xs text-slate-400">
+            <p className="text-emerald-400 font-bold">¡IMPORTANTE! Actualización de Script</p>
+            <p>Este nuevo código organiza el Excel en pestañas: Inventario, Equipos, Protocolos y Preparaciones. Sigue estos pasos:</p>
+            <ol className="list-decimal list-inside space-y-1 pl-2">
+              <li>Ve a tu Google Sheet &gt; Extensiones &gt; Apps Script.</li>
+              <li>Borra todo el código anterior y pega el nuevo.</li>
+              <li>Dale a <strong>Guardar</strong>.</li>
+              <li>Dale a <strong>Implementar &gt; Nueva implementación</strong> (¡Muy importante crear una NUEVA, no solo guardar!).</li>
+              <li>Actualiza la URL en esta app si cambió (normalmente cambia).</li>
+            </ol>
+          </div>
 
           <pre className="bg-slate-950 p-4 rounded-xl text-[10px] font-mono text-emerald-400 overflow-x-auto border border-slate-800 h-64">
             {scriptCode}
