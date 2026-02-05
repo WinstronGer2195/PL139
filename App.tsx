@@ -106,6 +106,7 @@ const App: React.FC = () => {
       if (historyData) {
         setHistory(historyData.map((h: any) => ({
           id: h.id,
+          serialNumber: h.full_record_json?.serialNumber || '', // Recuperar serial number
           templateName: h.template_name,
           totalVolume: parseFloat(h.total_volume),
           timestamp: h.timestamp,
@@ -155,13 +156,21 @@ const App: React.FC = () => {
 
   // --- Handlers de Acción (Local + Supabase + Sheet) ---
 
-  const handleAddReagent = async (r: Reagent) => {
-    // 1. Local
-    const updated = [r, ...reagents];
-    setReagents(updated);
+  const handleUpdateReagent = async (r: Reagent) => {
+    // 1. Local: Buscar y actualizar si existe, o agregar si no (aunque para eso está handleAddReagent)
+    const exists = reagents.some(item => item.id === r.id);
+    let updatedReagents;
     
-    // 2. Google Sheet
-    syncToSheet('reagent_created', r);
+    if (exists) {
+      updatedReagents = reagents.map(item => item.id === r.id ? r : item);
+    } else {
+      updatedReagents = [r, ...reagents];
+    }
+    
+    setReagents(updatedReagents);
+
+    // 2. Google Sheet (Registrar evento de actualización)
+    syncToSheet('reagent_updated', r);
 
     // 3. Supabase
     if (supabase) {
@@ -182,13 +191,8 @@ const App: React.FC = () => {
   };
 
   const handleAddTemplate = async (t: MixTemplate) => {
-    // 1. Local
     setTemplates([t, ...templates]);
-    
-    // 2. Google Sheet
     syncToSheet('template_created', t);
-
-    // 3. Supabase
     if (supabase) {
       await supabase.from('templates').upsert({
         id: t.id,
@@ -206,22 +210,49 @@ const App: React.FC = () => {
   };
 
   const handleAddPreparation = async (p: PreparationRecord) => {
+    // --- LÓGICA DE CONTADOR AUTOMÁTICO ---
+    const currentYear = new Date().getFullYear();
+    const yearlyRecords = history.filter(h => {
+      // Verificar timestamp para asegurar que pertenece al año actual
+      const date = new Date(h.timestamp);
+      return date.getFullYear() === currentYear;
+    });
+
+    let maxCounter = 0;
+    yearlyRecords.forEach(record => {
+      if (record.serialNumber && record.serialNumber.includes('/')) {
+        const parts = record.serialNumber.split('/'); // Ej: "S5/2024" -> ["S5", "2024"]
+        if (parts.length === 2) {
+           const numPart = parts[0].replace(/\D/g, ''); // Eliminar 'S' -> "5"
+           const num = parseInt(numPart, 10);
+           if (!isNaN(num) && num > maxCounter) {
+             maxCounter = num;
+           }
+        }
+      }
+    });
+
+    const newSerialNumber = `S${maxCounter + 1}/${currentYear}`;
+    
+    // Crear el registro final con el serial number
+    const finalRecord = { ...p, serialNumber: newSerialNumber };
+
     // 1. Local
-    setHistory([p, ...history]);
+    setHistory([finalRecord, ...history]);
     setActiveTab('audit');
     
     // 2. Google Sheet
-    syncToSheet('preparation_created', p);
+    syncToSheet('preparation_created', finalRecord);
 
     // 3. Supabase
     if (supabase) {
       await supabase.from('history').insert({
-        id: p.id,
-        template_name: p.templateName,
-        analyst: p.analyst,
-        total_volume: p.totalVolume,
-        timestamp: p.timestamp,
-        full_record_json: p 
+        id: finalRecord.id,
+        template_name: finalRecord.templateName,
+        analyst: finalRecord.analyst,
+        total_volume: finalRecord.totalVolume,
+        timestamp: finalRecord.timestamp,
+        full_record_json: finalRecord 
       });
     }
   };
@@ -365,7 +396,7 @@ const App: React.FC = () => {
               </div>
             )}
 
-            {activeTab === 'reagents' && <ReagentsManager reagents={reagents} onAdd={handleAddReagent} onDelete={handleDeleteReagent} />}
+            {activeTab === 'reagents' && <ReagentsManager reagents={reagents} onAdd={handleUpdateReagent} onDelete={handleDeleteReagent} />}
             {activeTab === 'templates' && <MixTemplates reagents={reagents} templates={templates} onAdd={handleAddTemplate} onDelete={handleDeleteTemplate} />}
             {activeTab === 'equipment' && <EquipmentManager equipment={equipment} onAdd={handleAddEquipment} onDelete={handleDeleteEquipment} />}
             {activeTab === 'new-prep' && <NewPreparation reagents={reagents} templates={templates} equipment={equipment} onSave={handleAddPreparation} />}

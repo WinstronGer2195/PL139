@@ -39,6 +39,7 @@ export interface PreparationReagentResult {
 
 export interface PreparationRecord {
   id: string;
+  serialNumber?: string; // Nuevo campo para el contador S1/2024
   templateName: string;
   numReactions: number;
   extraReactions: number;

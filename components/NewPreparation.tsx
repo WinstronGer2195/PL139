@@ -1,7 +1,7 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { Reagent, MixTemplate, PreparationRecord, PreparationReagentResult, Equipment } from '../types';
-import { Calculator, Save, User, Droplets, FlaskConical, HardDrive } from 'lucide-react';
+import { Calculator, Save, User, Droplets, FlaskConical, HardDrive, Edit3 } from 'lucide-react';
 
 interface Props {
   reagents: Reagent[];
@@ -16,6 +16,9 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
   const [extraRxns, setExtraRxns] = useState<string>('0');
   const [rxnVolume, setRxnVolume] = useState<string>('20');
   const [analyst, setAnalyst] = useState('');
+  
+  // Estado para el ajuste manual de agua
+  const [manualWaterVolume, setManualWaterVolume] = useState<string>('');
 
   const selectedMix = useMemo(() => templates.find(t => t.id === selectedMixId), [selectedMixId, templates]);
   
@@ -24,16 +27,21 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
   const rxnVolumeVal = parseFloat(rxnVolume) || 0;
   const totalReactions = numRxnsVal + extraRxnsVal;
 
-  const calculations = useMemo(() => {
-    if (!selectedMix || totalReactions <= 0 || rxnVolumeVal <= 0) return { reagentResults: [], waterVolume: 0 };
+  // Reset manual water when mix changes
+  useEffect(() => {
+    setManualWaterVolume('');
+  }, [selectedMixId]);
 
-    let usedVolumeSoFar = 0;
+  const calculations = useMemo(() => {
+    if (!selectedMix || totalReactions <= 0 || rxnVolumeVal <= 0) return { reagentResults: [], waterVolumePerRxn: 0, totalWaterVolume: 0, actualTotalVolume: 0 };
+
+    let reagentsVolumePerRxn = 0;
     const reagentResults: PreparationReagentResult[] = selectedMix.reagents.map(req => {
       const r = reagents.find(re => re.id === req.reagentId);
       if (!r) return null as any;
 
       const volPerRxn = (req.targetFinalConcentration * rxnVolumeVal) / r.initialConcentration;
-      usedVolumeSoFar += volPerRxn;
+      reagentsVolumePerRxn += volPerRxn;
 
       return {
         name: r.name,
@@ -46,14 +54,25 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
       };
     }).filter(Boolean);
 
-    const waterPerRxn = Math.max(0, rxnVolumeVal - usedVolumeSoFar);
+    // Cálculo del agua: Si hay input manual, usarlo. Si no, calcular el restante.
+    let waterPerRxn = 0;
+    
+    if (manualWaterVolume !== '') {
+      waterPerRxn = parseFloat(manualWaterVolume) || 0;
+    } else {
+      waterPerRxn = Math.max(0, rxnVolumeVal - reagentsVolumePerRxn);
+    }
+    
+    // Volumen real total por reacción puede ser diferente al "rxnVolume" si se edita el agua
+    const actualTotalVolume = (reagentsVolumePerRxn + waterPerRxn) * totalReactions;
     
     return {
       reagentResults,
       waterVolumePerRxn: waterPerRxn,
-      totalWaterVolume: waterPerRxn * totalReactions
+      totalWaterVolume: waterPerRxn * totalReactions,
+      actualTotalVolume
     };
-  }, [selectedMix, reagents, rxnVolumeVal, totalReactions]);
+  }, [selectedMix, reagents, rxnVolumeVal, totalReactions, manualWaterVolume]);
 
   const handleSave = () => {
     if (!selectedMix || !analyst) return;
@@ -64,9 +83,9 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
       numReactions: numRxnsVal,
       extraReactions: extraRxnsVal,
       reactionVolume: rxnVolumeVal,
-      totalVolume: totalReactions * rxnVolumeVal,
+      totalVolume: calculations.actualTotalVolume,
       reagents: calculations.reagentResults,
-      equipment: equipment, // Se vinculan todos los equipos predefinidos por defecto
+      equipment: equipment,
       waterVolume: calculations.totalWaterVolume || 0,
       timestamp: Date.now(),
       analyst: analyst.toUpperCase()
@@ -169,7 +188,7 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
                 </div>
                 <div className="text-left md:text-right bg-emerald-700/40 p-4 rounded-3xl border border-emerald-500/30 min-w-[180px]">
                   <p className="text-[10px] uppercase font-black tracking-widest opacity-80 mb-1">Volumen Total MasterMix</p>
-                  <p className="text-4xl font-black">{(totalReactions * rxnVolumeVal).toFixed(2)} <span className="text-xl">uL</span></p>
+                  <p className="text-4xl font-black">{calculations.actualTotalVolume.toFixed(2)} <span className="text-xl">uL</span></p>
                 </div>
               </div>
 
@@ -196,18 +215,33 @@ const NewPreparation: React.FC<Props> = ({ reagents, templates, equipment, onSav
                         <td className="px-8 py-6 text-right font-black text-emerald-700 bg-emerald-50/20 text-xl tabular-nums">{r.totalVolume.toFixed(3)} uL</td>
                       </tr>
                     ))}
-                    {calculations.totalWaterVolume > 0 && (
-                      <tr className="bg-blue-50/10">
-                        <td className="px-8 py-6 border-t border-blue-50">
-                          <div className="flex items-center gap-2 text-blue-600">
-                            <Droplets className="w-5 h-5" />
-                            <span className="font-extrabold text-lg uppercase tracking-tight">Agua Ultra Pura</span>
-                          </div>
-                        </td>
-                        <td className="px-8 py-6 text-right text-blue-500 font-bold tabular-nums">{calculations.waterVolumePerRxn.toFixed(4)} uL</td>
-                        <td className="px-8 py-6 text-right font-black text-blue-700 bg-blue-50/30 text-xl tabular-nums">{calculations.totalWaterVolume.toFixed(3)} uL</td>
-                      </tr>
-                    )}
+                    <tr className="bg-blue-50/10">
+                      <td className="px-8 py-6 border-t border-blue-50">
+                        <div className="flex items-center gap-2 text-blue-600">
+                          <Droplets className="w-5 h-5" />
+                          <span className="font-extrabold text-lg uppercase tracking-tight">Agua Ultra Pura</span>
+                        </div>
+                        <p className="text-[10px] text-slate-400 mt-1">
+                           {manualWaterVolume ? 'Ajuste manual activo' : 'Calculado para completar volumen'}
+                        </p>
+                      </td>
+                      <td className="px-8 py-6 border-t border-blue-50 text-right text-blue-500 font-bold tabular-nums">
+                        <div className="flex items-center justify-end gap-2">
+                          <input 
+                            type="number" 
+                            step="0.01"
+                            placeholder={calculations.waterVolumePerRxn.toFixed(4)}
+                            value={manualWaterVolume}
+                            onChange={(e) => setManualWaterVolume(e.target.value)}
+                            className="w-20 p-1 text-right bg-white border border-blue-200 rounded font-bold text-sm outline-none focus:ring-2 focus:ring-blue-400"
+                          />
+                          <span className="text-xs">uL</span>
+                        </div>
+                      </td>
+                      <td className="px-8 py-6 border-t border-blue-50 text-right font-black text-blue-700 bg-blue-50/30 text-xl tabular-nums">
+                        {calculations.totalWaterVolume.toFixed(3)} uL
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

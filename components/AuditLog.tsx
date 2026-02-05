@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { PreparationRecord } from '../types';
-import { Search, Calendar, User, ChevronDown, ChevronUp, FileText, HardDrive } from 'lucide-react';
+import { Search, Calendar, User, ChevronDown, ChevronUp, FileText, HardDrive, Hash } from 'lucide-react';
 
 interface Props {
   history: PreparationRecord[];
@@ -13,7 +13,8 @@ const AuditLog: React.FC<Props> = ({ history }) => {
 
   const filtered = history.filter(h => 
     h.templateName.toLowerCase().includes(search.toLowerCase()) ||
-    h.analyst.toLowerCase().includes(search.toLowerCase())
+    h.analyst.toLowerCase().includes(search.toLowerCase()) ||
+    (h.serialNumber && h.serialNumber.toLowerCase().includes(search.toLowerCase()))
   );
 
   return (
@@ -27,7 +28,7 @@ const AuditLog: React.FC<Props> = ({ history }) => {
           <Search className="absolute left-3 top-2.5 w-4 h-4 text-slate-400" />
           <input 
             type="text" 
-            placeholder="Buscar por mix o analista..." 
+            placeholder="Buscar por mix, serial o analista..." 
             value={search} 
             onChange={e => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2 border rounded-xl outline-none focus:ring-2 focus:ring-emerald-500"
@@ -43,8 +44,9 @@ const AuditLog: React.FC<Props> = ({ history }) => {
               onClick={() => setExpanded(expanded === record.id ? null : record.id)}
             >
               <div className="flex items-center gap-4">
-                <div className="w-10 h-10 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center">
-                  <FileText className="w-5 h-5" />
+                <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex flex-col items-center justify-center border border-emerald-100">
+                  <span className="text-[9px] font-black uppercase text-emerald-400">ID</span>
+                  <span className="font-bold text-xs">{record.serialNumber || '---'}</span>
                 </div>
                 <div>
                   <h4 className="font-bold text-slate-800">{record.templateName}</h4>
@@ -87,6 +89,11 @@ const AuditLog: React.FC<Props> = ({ history }) => {
                             <td className="py-2 text-right font-bold text-emerald-600">{r.totalVolume.toFixed(2)}</td>
                           </tr>
                         ))}
+                        {/* Mostrar Agua en el historial */}
+                        <tr className="bg-blue-50/30">
+                          <td className="py-2 font-bold text-blue-700">Agua Ultra Pura</td>
+                          <td className="py-2 text-right font-bold text-blue-600">{record.waterVolume.toFixed(2)}</td>
+                        </tr>
                       </tbody>
                     </table>
                   </div>
@@ -110,9 +117,11 @@ const AuditLog: React.FC<Props> = ({ history }) => {
                 </div>
 
                 <div className="mt-3 flex justify-between items-center px-1">
-                  <span className="text-[9px] text-slate-300 font-mono uppercase">ID: {record.id}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[9px] text-slate-300 font-mono uppercase">UUID: {record.id}</span>
+                  </div>
                   <div className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[9px] font-bold rounded uppercase tracking-tighter">
-                    Trazabilidad Certificada
+                    Certificado: {record.serialNumber || 'N/A'}
                   </div>
                 </div>
               </div>

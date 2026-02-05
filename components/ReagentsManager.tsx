@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Reagent } from '../types';
-import { Plus, Trash2, X } from 'lucide-react';
+import { Plus, Trash2, X, Pencil } from 'lucide-react';
 
 interface Props {
   reagents: Reagent[];
@@ -11,22 +11,49 @@ interface Props {
 
 const ReagentsManager: React.FC<Props> = ({ reagents, onAdd, onDelete }) => {
   const [isAdding, setIsAdding] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [useCustomUnit, setUseCustomUnit] = useState(false);
   const [form, setForm] = useState({ name: '', initialConcentration: '', unit: 'X', lotNumber: '' });
+
+  const startEdit = (r: Reagent) => {
+    setForm({
+      name: r.name,
+      initialConcentration: r.initialConcentration.toString(),
+      unit: r.unit,
+      lotNumber: r.lotNumber
+    });
+    setEditingId(r.id);
+    
+    // Verificar si la unidad es custom
+    const standardUnits = ['X', 'mM', 'uM', 'ng/uL', 'U/uL'];
+    setUseCustomUnit(!standardUnits.includes(r.unit));
+    
+    setIsAdding(true);
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.initialConcentration) return;
 
     onAdd({
-      id: crypto.randomUUID(),
+      id: editingId || crypto.randomUUID(), // Usar ID existente si se edita, o nuevo si se crea
       name: form.name,
       initialConcentration: parseFloat(form.initialConcentration),
       unit: form.unit,
       lotNumber: form.lotNumber || 'N/A'
     });
+    
+    // Resetear formulario
     setForm({ name: '', initialConcentration: '', unit: 'X', lotNumber: '' });
     setUseCustomUnit(false);
+    setEditingId(null);
+    setIsAdding(false);
+  };
+
+  const cancelEdit = () => {
+    setForm({ name: '', initialConcentration: '', unit: 'X', lotNumber: '' });
+    setUseCustomUnit(false);
+    setEditingId(null);
     setIsAdding(false);
   };
 
@@ -45,7 +72,7 @@ const ReagentsManager: React.FC<Props> = ({ reagents, onAdd, onDelete }) => {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-slate-800">Inventario de Reactivos</h2>
         {!isAdding && (
-          <button onClick={() => setIsAdding(true)} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-md">
+          <button onClick={() => { setEditingId(null); setForm({ name: '', initialConcentration: '', unit: 'X', lotNumber: '' }); setIsAdding(true); }} className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-all shadow-md">
             <Plus className="w-4 h-4" /> Nuevo Reactivo
           </button>
         )}
@@ -54,8 +81,8 @@ const ReagentsManager: React.FC<Props> = ({ reagents, onAdd, onDelete }) => {
       {isAdding && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-lg space-y-4 animate-in fade-in zoom-in duration-200">
           <div className="flex justify-between items-center mb-2">
-            <h3 className="text-lg font-bold text-slate-800">Registrar Reactivo Stock</h3>
-            <button type="button" onClick={() => setIsAdding(false)}><X className="w-5 h-5 text-slate-400" /></button>
+            <h3 className="text-lg font-bold text-slate-800">{editingId ? 'Editar Reactivo' : 'Registrar Reactivo Stock'}</h3>
+            <button type="button" onClick={cancelEdit}><X className="w-5 h-5 text-slate-400" /></button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-1">
@@ -107,8 +134,10 @@ const ReagentsManager: React.FC<Props> = ({ reagents, onAdd, onDelete }) => {
             </div>
           </div>
           <div className="pt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setIsAdding(false)} className="px-4 py-2 text-slate-400 font-medium">Cancelar</button>
-            <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold">Guardar Reactivo</button>
+            <button type="button" onClick={cancelEdit} className="px-4 py-2 text-slate-400 font-medium">Cancelar</button>
+            <button type="submit" className="px-6 py-2 bg-emerald-600 text-white rounded-lg font-bold">
+              {editingId ? 'Actualizar Reactivo' : 'Guardar Reactivo'}
+            </button>
           </div>
         </form>
       )}
@@ -133,7 +162,14 @@ const ReagentsManager: React.FC<Props> = ({ reagents, onAdd, onDelete }) => {
                   <td className="px-6 py-4 text-slate-500 font-mono text-sm">{r.lotNumber}</td>
                   <td className="px-6 py-4 text-emerald-700 font-medium">{r.initialConcentration} {r.unit}</td>
                   <td className="px-6 py-4 text-right">
-                    <button onClick={() => onDelete(r.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                    <div className="flex items-center justify-end gap-2">
+                      <button onClick={() => startEdit(r)} className="text-slate-300 hover:text-indigo-500 transition-colors p-1" title="Editar">
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                      <button onClick={() => onDelete(r.id)} className="text-slate-300 hover:text-red-500 transition-colors p-1" title="Eliminar">
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))
