@@ -14,7 +14,7 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Pega aquí tus credenciales para que la app inicie conectada automáticamente.
 const DEFAULT_SUPABASE_URL = "https://wgrkegfpdkqssvyutczl.supabase.co"; // Ej: "https://tuproyecto.supabase.co"
 const DEFAULT_SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6IndncmtlZ2ZwZGtxc3N2eXV0Y3psIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzAxMTQ3NDIsImV4cCI6MjA4NTY5MDc0Mn0.X45t0H4mnSnYx5Cd_5axHx5kw490zX8GnRrepTN5rBs"; // Ej: "eyJhbGciOiJIUzI1NiIsIn..."
-const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbzWow2_pXHAzb4JDzlpP9omYbvvfwofxjDgiMuCSVGB4cLzj8oiY1eznBEZ0n5sthOXTw/exec";    // Ej: "https://script.google.com/macros/s/.../exec"
+const DEFAULT_SHEET_URL = "https://script.google.com/macros/s/AKfycbwTpqE4n_DEBg-xvD0SfUGePXhny0EpjWGt8joNmkDyqFy-BpksBP4hBKVtHRSn8-_DFQ/exec
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'dashboard' | 'reagents' | 'templates' | 'new-prep' | 'audit' | 'sync' | 'equipment'>('dashboard');
